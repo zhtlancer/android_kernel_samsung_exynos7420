@@ -1383,6 +1383,8 @@ static int f2fs_ioc_start_atomic_write(struct file *filp)
 	if (ret)
 		return ret;
 
+	inode_lock(inode);
+
 	if (f2fs_is_atomic_file(inode))
 		goto out;
 
@@ -1403,6 +1405,7 @@ static int f2fs_ioc_start_atomic_write(struct file *filp)
 	if (ret)
 		clear_inode_flag(F2FS_I(inode), FI_ATOMIC_FILE);
 out:
+	inode_unlock(inode);
 	mnt_drop_write_file(filp);
 	return ret;
 }
@@ -1419,6 +1422,8 @@ static int f2fs_ioc_commit_atomic_write(struct file *filp)
 	if (ret)
 		return ret;
 
+	inode_lock(inode);
+
 	if (f2fs_is_volatile_file(inode))
 		goto err_out;
 
@@ -1433,6 +1438,7 @@ static int f2fs_ioc_commit_atomic_write(struct file *filp)
 
 	ret = f2fs_sync_file(filp, 0, LLONG_MAX, 0);
 err_out:
+	inode_unlock(inode);
 	mnt_drop_write_file(filp);
 	return ret;
 }
@@ -1449,6 +1455,8 @@ static int f2fs_ioc_start_volatile_write(struct file *filp)
 	if (ret)
 		return ret;
 
+	inode_lock(inode);
+
 	if (f2fs_is_volatile_file(inode))
 		goto out;
 
@@ -1459,6 +1467,7 @@ static int f2fs_ioc_start_volatile_write(struct file *filp)
 	set_inode_flag(F2FS_I(inode), FI_VOLATILE_FILE);
 	f2fs_update_time(F2FS_I_SB(inode), REQ_TIME);
 out:
+	inode_unlock(inode);
 	mnt_drop_write_file(filp);
 	return ret;
 }
@@ -1475,6 +1484,8 @@ static int f2fs_ioc_release_volatile_write(struct file *filp)
 	if (ret)
 		return ret;
 
+	inode_lock(inode);
+
 	if (!f2fs_is_volatile_file(inode))
 		goto out;
 
@@ -1485,6 +1496,7 @@ static int f2fs_ioc_release_volatile_write(struct file *filp)
 
 	ret = punch_hole(inode, 0, F2FS_BLKSIZE);
 out:
+	inode_unlock(inode);
 	mnt_drop_write_file(filp);
 	return ret;
 }
@@ -1501,12 +1513,16 @@ static int f2fs_ioc_abort_volatile_write(struct file *filp)
 	if (ret)
 		return ret;
 
+	inode_lock(inode);
+
 	if (f2fs_is_atomic_file(inode))
 		drop_inmem_pages(inode);
 	if (f2fs_is_volatile_file(inode)) {
 		clear_inode_flag(F2FS_I(inode), FI_VOLATILE_FILE);
 		ret = f2fs_sync_file(filp, 0, LLONG_MAX, 0);
 	}
+
+	inode_unlock(inode);
 
 	mnt_drop_write_file(filp);
 	f2fs_update_time(F2FS_I_SB(inode), REQ_TIME);
