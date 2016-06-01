@@ -176,7 +176,6 @@ void bcm_bt_lpm_exit_lpm_locked(struct uart_port *uport)
 
 static void update_host_wake_locked(int host_wake)
 {
-	pr_info("[BT] host_wake : bt_lpm.host_wake = %d : %d\n", host_wake, bt_lpm.host_wake);
 	if (host_wake == bt_lpm.host_wake)
 		return;
 
@@ -185,7 +184,6 @@ static void update_host_wake_locked(int host_wake)
 	bt_is_running = 1;
 
 	if (host_wake) {
-		pr_info("[BT] update_host_wake_locked\n");
 		wake_lock(&bt_lpm.host_wake_lock);
 	} else  {
 		/* Take a timed wakelock, so that upper layers can take it.
@@ -206,7 +204,6 @@ static irqreturn_t host_wake_isr(int irq, void *dev)
 
 	host_wake = gpio_get_value(bt_gpio.bt_hostwake);
 	irq_set_irq_type(irq, host_wake ? IRQF_TRIGGER_FALLING : IRQF_TRIGGER_RISING);
-	pr_info("[BT] host_wake(%d) updated by IRQ\n", host_wake);
 
 	if (!bt_lpm.uport) {
 		bt_lpm.host_wake = host_wake;
