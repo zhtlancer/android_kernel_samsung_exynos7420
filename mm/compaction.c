@@ -1211,6 +1211,19 @@ static struct notifier_block compact_notifier_block = {
 	.priority = -1,
 };
 
+static int compaction_shrink(struct shrinker *s, struct shrink_control *sc)
+{
+	pr_info("compaction: called from shrinker!\n");
+	compact_nodes();
+
+	return 0;
+}
+
+static struct shrinker compaction_shrinker = {
+	.shrink = compaction_shrink,
+	.seeks = DEFAULT_SEEKS * 8
+};
+
 /* Compact all zones within a node */
 static void __compact_pgdat(pg_data_t *pgdat, struct compact_control *cc)
 {
@@ -1359,6 +1372,8 @@ static int  __init mem_compaction_init(void)
 		sched_setscheduler(compact_thread.task, SCHED_IDLE, &param);
 
 	fb_register_client(&compact_notifier_block);
+	register_shrinker(&compaction_shrinker);
+
 	return 0;
 }
 late_initcall(mem_compaction_init);
