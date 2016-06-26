@@ -1118,7 +1118,7 @@ unsigned long try_to_compact_pages(struct zonelist *zonelist,
 	count_compact_event(COMPACTSTALL);
 
 #ifdef CONFIG_CMA
-	if (allocflags_to_migratetype(gfp_mask) == MIGRATE_MOVABLE)
+	if (gfp_mask & __GFP_CMA)
 		alloc_flags |= ALLOC_CMA;
 #endif
 	/* Compact each zone in the list */
@@ -1275,16 +1275,23 @@ static void compact_node(int nid)
 	__compact_pgdat(NODE_DATA(nid), &cc);
 }
 
+void zswap_compact(void);
 /* Compact all nodes in the system */
 static void compact_nodes(void)
 {
 	int nid;
+
+	sysctl_compact_memory++;
 
 	/* Flush pending updates to the LRU lists */
 	lru_add_drain_all();
 
 	for_each_online_node(nid)
 		compact_node(nid);
+
+	pr_info("compact_memory done.(%d times so far)\n",
+		sysctl_compact_memory);
+	zswap_compact();
 }
 
 /* The written value is actually unused, all memory is compacted */
@@ -1294,12 +1301,8 @@ int sysctl_compact_memory;
 int sysctl_compaction_handler(struct ctl_table *table, int write,
 			void __user *buffer, size_t *length, loff_t *ppos)
 {
-	if (write) {
-		sysctl_compact_memory++;
+	if (write)
 		compact_nodes();
-		pr_info("compact_memory done.(%d times so far)\n",
-			sysctl_compact_memory);
-	}
 	else
 		proc_dointvec(table, write, buffer, length, ppos);
 
