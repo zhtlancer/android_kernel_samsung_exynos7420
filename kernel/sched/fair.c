@@ -4018,27 +4018,27 @@ static DEFINE_RAW_SPINLOCK(hmp_sysfs_lock);
 #define YIELD_CORRECTION_TIME 10000000 /* nanoseconds */
 
 #ifdef CONFIG_SCHED_HMP_PRIO_FILTER
-static unsigned int hmp_up_prio = NICE_TO_PRIO(CONFIG_SCHED_HMP_PRIO_FILTER_VAL);
+unsigned int hmp_up_prio = NICE_TO_PRIO(CONFIG_SCHED_HMP_PRIO_FILTER_VAL);
 #endif
-static unsigned int hmp_next_up_threshold = 4096;
-static unsigned int hmp_next_down_threshold = 4096;
+unsigned int hmp_next_up_threshold = 4096;
+unsigned int hmp_next_down_threshold = 4096;
 
 #ifdef CONFIG_SCHED_HMP_LITTLE_PACKING
-static unsigned int hmp_packing_enabled = 1;
-static unsigned int hmp_full_threshold = 42;
+unsigned int hmp_packing_enabled = 1;
+unsigned int hmp_full_threshold = 42;
 #endif
 
-static inline bool hmp_boost(void)
+static inline int hmp_boost(void)
 {
 	u64 now = ktime_to_us(ktime_get());
-	bool ret;
+	int ret;
 	unsigned long flags;
 
 	raw_spin_lock_irqsave(&hmp_boost_lock, flags);
 	if (hmp_boost_val || now < hmp_boostpulse_endtime)
-		ret = true;
+		ret = 1;
 	else
-		ret = false;
+		ret = 0;
 	raw_spin_unlock_irqrestore(&hmp_boost_lock, flags);
 
 	return ret;
@@ -4239,7 +4239,7 @@ static u64 hmp_variable_scale_convert(u64 delta)
 	u64 high = delta >> 32ULL;
 	u64 low = delta & 0xffffffffULL;
 
-	if (hmp_semiboost_val) {
+	if (hmp_semiboost()) {
 		low *= hmp_data.semiboost_multiplier;
 		high *= hmp_data.semiboost_multiplier;
 	} else {
@@ -4557,7 +4557,7 @@ int set_hmp_aggressive_yield(int enable)
 
 int get_hmp_boost(void)
 {
-	return hmp_boost() ? 1 : 0;
+	return hmp_boost();
 }
 
 int get_hmp_semiboost(void)
