@@ -16,14 +16,6 @@ if [ "${1}" = "skip" ] ; then
 else
 	echo "Compiling kernel"
 	cp defconfig .config
-scripts/configcleaner "
-CONFIG_RD_GZIP
-"
-	echo '
-CONFIG_RD_GZIP=y
-CONFIG_DECOMPRESS_GZIP=y
-' >> .config
-	make oldconfig
 	make "$@" || exit 1
 fi
 
