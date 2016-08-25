@@ -57,8 +57,6 @@ chown 0.0 /system/vendor/build.prop
 chmod 644 /system/vendor/build.prop
 
 cd /
-ui_print " - setting system-mode SuperSU"
-echo "SYSTEMLESS=false" > /system/.supersu
 
 ui_print " - tuning file systems"
 fstrim -v /system > /dev/null 2>&1
