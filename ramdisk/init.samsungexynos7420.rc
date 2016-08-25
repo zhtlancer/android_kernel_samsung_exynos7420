@@ -373,6 +373,9 @@ on boot
     write /sys/devices/system/cpu/cpu4/cpufreq/interactive/io_is_busy 1
     write /sys/devices/virtual/sec/sec_slow/io_is_busy 1
 
+    # Use more optimized nr_requests for UFS
+    write /sys/block/sda/queue/nr_requests 256
+
     # CPU Idle
     chown system system /sys/module/cpuidle_exynos64/parameters/enable_mask
 
