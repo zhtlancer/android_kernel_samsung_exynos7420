@@ -13,11 +13,11 @@ echo "1" > /sys/devices/system/cpu/cpu4/online
 echo "1" > /sys/devices/system/cpu/cpu5/online
 echo "1" > /sys/devices/system/cpu/cpu6/online
 echo "1" > /sys/devices/system/cpu/cpu7/online
-echo "0-7" > /dev/cpuset/foreground/cpus
-echo "4-7" > /dev/cpuset/foreground/boost/cpus
-echo "0" > /dev/cpuset/background/cpus
-echo "0-3" > /dev/cpuset/system-background/cpus
-echo "0-3" > /dev/cpuset/invisible/cpus
+echo "0-7" > /dev/cpuset/a_foreground/cpus
+echo "4-7" > /dev/cpuset/a_foreground/boost/cpus
+echo "0" > /dev/cpuset/a_background/cpus
+echo "0-3" > /dev/cpuset/a_system-background/cpus
+echo "0-3" > /dev/cpuset/a_invisible/cpus
 echo "400000" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
 echo "800000" > /sys/devices/system/cpu/cpu4/cpufreq/scaling_min_freq
 echo "1" > /sys/power/enable_dm_hotplug
