@@ -4316,13 +4316,13 @@ static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 	buffer = kmalloc(PAGE_SIZE, GFP_KERNEL);
 	path = dentry_path_raw(cgrp->dentry, buffer, PAGE_SIZE);
 	pr_info("cgroup: %s: %s\n", __func__, path);
-	if (!strncmp(path, "/a_foreground", PAGE_SIZE - 1)) {
+	if (!strncmp(path, "/foreground", PAGE_SIZE - 1)) {
 		set_cgrp(cgrp, 0);
 		pr_info("%s: fg_cgrp set!\n", __func__);
-	} else if (!strncmp(path, "/a_background", PAGE_SIZE - 1)) {
+	} else if (!strncmp(path, "/background", PAGE_SIZE - 1)) {
 		set_cgrp(cgrp, 1);
 		pr_info("%s: bg_cgrp set!\n", __func__);
-	} else if (!strncmp(path, "/a_invisible", PAGE_SIZE - 1)) {
+	} else if (!strncmp(path, "/invisible", PAGE_SIZE - 1)) {
 		set_cgrp(cgrp, 2);
 		pr_info("%s: inv_cgrp set!\n", __func__);
 	}
