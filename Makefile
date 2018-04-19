@@ -198,7 +198,8 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
 #ARCH		?= $(SUBARCH)
 #CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
 ARCH		?= arm64
-CROSS_COMPILE	?= /home/arter97/linaro-64/bin/aarch64-linux-android-
+#CROSS_COMPILE  ?= /home/arter97/linaro-64/bin/aarch64-linux-android-
+CROSS_COMPILE	?= /run/media/lancerx/LinuxData/projs/android-wearout/s6_code/toolchains/gcc-linaro-aarch64-linux-gnu-4.9-2014.09_linux/bin/aarch64-linux-gnu-
 
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
@@ -393,9 +394,9 @@ KBUILD_CFLAGS   := -Werror -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -std=gnu89
 
 # arter97's optimizations
-KBUILD_CFLAGS	+= -pipe -mno-android -fno-pic -O2 -march=armv8-a+crc -mcpu=cortex-a57.cortex-a53 -mtune=cortex-a57.cortex-a53
+KBUILD_CFLAGS	+= -pipe -fno-pic -O2 -march=armv8-a+crc -mcpu=cortex-a57.cortex-a53 -mtune=cortex-a57.cortex-a53
 # GCC 6.1 is too strict
-KBUILD_CFLAGS	+= -Wno-error=misleading-indentation -Wno-error=tautological-compare -Wno-error=array-bounds -Wno-error=overflow
+#KBUILD_CFLAGS	+= -Wno-error=misleading-indentation -Wno-error=tautological-compare -Wno-error=array-bounds -Wno-error=overflow
 # Other unnecessary warnings
 KBUILD_CFLAGS	+= -Wno-maybe-uninitialized		\
 		   -Wno-error=unused-but-set-parameter	\
@@ -406,7 +407,6 @@ KBUILD_CFLAGS	+= -Wno-maybe-uninitialized		\
 		   -Wno-error=unused-parameter		\
 		   -Wno-error=unused-result		\
 		   -Wno-error=unused-variable		\
-		   -Wno-error=unused-const-variable	\
 		   -Wno-error=unused-value
 
 KBUILD_AFLAGS_KERNEL :=
