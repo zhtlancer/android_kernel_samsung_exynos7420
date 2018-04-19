@@ -2598,6 +2598,10 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 
 		written = generic_file_direct_write(iocb, iov, &nr_segs, pos,
 							ppos, count, ocount);
+		if (written > 0) {
+			struct hd_struct *part =
+				iocb->ki_filp->f_mapping->host->i_sb->s_bdev->bd_part;
+		}
 		if (written < 0 || written == count)
 			goto out;
 		/*

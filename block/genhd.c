@@ -31,6 +31,11 @@
 static DEFINE_MUTEX(block_class_lock);
 struct kobject *block_depr;
 
+int *disk_stats_uid_slots;
+DEFINE_SPINLOCK(disk_stats_uid_slots_lock);
+unsigned int disk_stats_uid_slots_collided;
+int disk_stats_uid_slots_allocated;
+
 /* for extended dynamic devt allocation, currently only one major is used */
 #define NR_EXT_DEVT		(1 << MINORBITS)
 
@@ -1235,6 +1240,184 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 	}
 	disk_part_iter_exit(&piter);
 
+#if 0
+	disk_part_iter_init(&piter, gp, DISK_PITER_INCL_EMPTY_PART0);
+	while ((hd = disk_part_iter_next(&piter))) {
+		int i;
+		const char *sanity = disk_stats_uid_slots_collided == 0 ?
+			"[sane]" : "[collided]";
+		seq_printf(seqf, "%4d %7d %s seq %u count %d / %d %s:\n",
+				MAJOR(part_devt(hd)),
+				MINOR(part_devt(hd)),
+				disk_name(gp, hd->partno, buf),
+				atomic_read(&hd->dkstats_uid_seq),
+				disk_stats_uid_slots_allocated,
+				MAX_STATS_ENTRIES,
+				sanity);
+		atomic_inc(&hd->dkstats_uid_seq);
+		dump_stack();
+		for (i = 0; i < MAX_STATS_ENTRIES; i++) {
+			unsigned long sectors = 0;
+			int uid = disk_stats_uid_slots[i];
+			if (uid == -1)
+				continue;
+			for_each_possible_cpu(cpu) {
+				struct disk_stats_uid *dkstats_uid =
+					per_cpu_ptr(hd->dkstats_uid, cpu);
+				sectors += dkstats_uid->sectors[i];
+			}
+			if (!sectors)
+				continue;
+			seq_printf(seqf, "\t%s [uid] uid %d sectors %lu\n",
+					disk_name(gp, hd->partno, buf),
+					uid, sectors);
+		}
+		for (i = 0; i < MAX_STATS_ENTRIES; i++) {
+			unsigned long sectors = 0;
+			int uid = disk_stats_uid_slots[i];
+			if (uid == -1)
+				continue;
+			for_each_possible_cpu(cpu) {
+				struct disk_stats_uid *dkstats_uid =
+					per_cpu_ptr(hd->dkstats_whole, cpu);
+				sectors += dkstats_uid->sectors[i];
+			}
+			if (!sectors)
+				continue;
+			seq_printf(seqf, "\t%s [whole] uid %d sectors %lu\n",
+					disk_name(gp, hd->partno, buf),
+					uid, sectors);
+		}
+		for (i = 0; i < MAX_STATS_ENTRIES; i++) {
+			unsigned long sectors = 0;
+			int uid = disk_stats_uid_slots[i];
+			if (uid == -1)
+				continue;
+			for_each_possible_cpu(cpu) {
+				struct disk_stats_uid *dkstats_uid =
+					per_cpu_ptr(hd->dkstats_mapped, cpu);
+				sectors += dkstats_uid->sectors[i];
+			}
+			if (!sectors)
+				continue;
+			seq_printf(seqf, "\t%s [cancelled] uid %d sectors %lu\n",
+					disk_name(gp, hd->partno, buf),
+					uid, sectors);
+		}
+	}
+	disk_part_iter_exit(&piter);
+#endif
+
+	return 0;
+}
+
+static int diskstats_uid_show(struct seq_file *seqf, void *v)
+{
+	struct gendisk *gp = v;
+	struct disk_part_iter piter;
+	struct hd_struct *hd;
+	char buf[BDEVNAME_SIZE];
+	int cpu;
+
+	disk_part_iter_init(&piter, gp, DISK_PITER_INCL_EMPTY_PART0);
+	while ((hd = disk_part_iter_next(&piter))) {
+		int i;
+		struct timespec uptime;
+		unsigned long uptime_ts;
+		int new_iter = 0;
+		unsigned long total_sectors = 0;
+		const char *sanity = disk_stats_uid_slots_collided == 0 ?
+			"[sane]" : "[collided]";
+		do_posix_clock_monotonic_gettime(&uptime);
+		monotonic_to_bootbased(&uptime);
+		uptime_ts = uptime.tv_sec * 1000000000 + uptime.tv_nsec;
+		if ((uptime_ts - hd->disk_stats_uid_ts1) > 100000000) {
+			new_iter = 1;
+			hd->disk_stats_uid_ts2 = hd->disk_stats_uid_ts1;
+			hd->disk_stats_uid_ts1 = uptime_ts;
+		}
+		if (new_iter)
+			atomic_inc(&hd->dkstats_uid_seq);
+		seq_printf(seqf, "%4d %7d %s seq %u count %d / %d %s ts %lu ts_diff %lu\n",
+				MAJOR(part_devt(hd)),
+				MINOR(part_devt(hd)),
+				disk_name(gp, hd->partno, buf),
+				atomic_read(&hd->dkstats_uid_seq),
+				disk_stats_uid_slots_allocated,
+				MAX_STATS_ENTRIES,
+				sanity,
+				uptime_ts / 1000000000,
+				(uptime_ts - hd->disk_stats_uid_ts2)/1000000000);
+		for (i = 0; i < MAX_STATS_ENTRIES; i++) {
+			unsigned long sectors = 0;
+			int uid = disk_stats_uid_slots[i];
+			unsigned long diff;
+			if (uid == -1)
+				continue;
+			for_each_possible_cpu(cpu) {
+				struct disk_stats_uid *dkstats_uid =
+					per_cpu_ptr(hd->dkstats_uid, cpu);
+				sectors += dkstats_uid->sectors[i];
+			}
+			if (!sectors)
+				continue;
+			if (new_iter)
+				hd->disk_stats_uid_hist2[i] = hd->disk_stats_uid_hist1[i];
+			hd->disk_stats_uid_hist1[i] = sectors;
+			diff = sectors - hd->disk_stats_uid_hist2[i];
+			seq_printf(seqf, "\t%s [uid] uid %d sectors %lu diff %lu\n",
+					disk_name(gp, hd->partno, buf),
+					uid, sectors, diff);
+			total_sectors += sectors;
+		}
+		seq_printf(seqf, "\t%s [uid total] sectors %lu\n",
+				disk_name(gp, hd->partno, buf),
+				total_sectors);
+
+#if 1
+		total_sectors = 0;
+		for (i = 0; i < MAX_STATS_ENTRIES; i++) {
+			unsigned long sectors = 0;
+			int uid = disk_stats_uid_slots[i];
+			if (uid == -1)
+				continue;
+			for_each_possible_cpu(cpu) {
+				struct disk_stats_uid *dkstats_uid =
+					per_cpu_ptr(hd->dkstats_whole, cpu);
+				sectors += dkstats_uid->sectors[i];
+			}
+			if (!sectors)
+				continue;
+			seq_printf(seqf, "\t%s [whole] uid %d sectors %lu\n",
+					disk_name(gp, hd->partno, buf),
+					uid, sectors);
+			total_sectors += sectors;
+		}
+		seq_printf(seqf, "\t%s [whole total] sectors %lu\n",
+				disk_name(gp, hd->partno, buf),
+				total_sectors);
+#endif
+#if 0
+		for (i = 0; i < MAX_STATS_ENTRIES; i++) {
+			unsigned long sectors = 0;
+			int uid = disk_stats_uid_slots[i];
+			if (uid == -1)
+				continue;
+			for_each_possible_cpu(cpu) {
+				struct disk_stats_uid *dkstats_uid =
+					per_cpu_ptr(hd->dkstats_mapped, cpu);
+				sectors += dkstats_uid->sectors[i];
+			}
+			if (!sectors)
+				continue;
+			seq_printf(seqf, "\t%s [cancelled] uid %d sectors %lu\n",
+					disk_name(gp, hd->partno, buf),
+					uid, sectors);
+		}
+#endif
+	}
+	disk_part_iter_exit(&piter);
+
 	return 0;
 }
 
@@ -1245,9 +1428,21 @@ static const struct seq_operations diskstats_op = {
 	.show	= diskstats_show
 };
 
+static const struct seq_operations diskstats_uid_op = {
+	.start	= disk_seqf_start,
+	.next	= disk_seqf_next,
+	.stop	= disk_seqf_stop,
+	.show	= diskstats_uid_show
+};
+
 static int diskstats_open(struct inode *inode, struct file *file)
 {
 	return seq_open(file, &diskstats_op);
+}
+
+static int diskstats_uid_open(struct inode *inode, struct file *file)
+{
+	return seq_open(file, &diskstats_uid_op);
 }
 
 static const struct file_operations proc_diskstats_operations = {
@@ -1257,9 +1452,17 @@ static const struct file_operations proc_diskstats_operations = {
 	.release	= seq_release,
 };
 
+static const struct file_operations proc_diskstats_uid_operations = {
+	.open		= diskstats_uid_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= seq_release,
+};
+
 static int __init proc_genhd_init(void)
 {
 	proc_create("diskstats", 0, NULL, &proc_diskstats_operations);
+	proc_create("diskstats_uid", 0, NULL, &proc_diskstats_uid_operations);
 	proc_create("partitions", 0, NULL, &proc_partitions_operations);
 	return 0;
 }
@@ -1318,6 +1521,10 @@ struct gendisk *alloc_disk_node(int minors, int node_id)
 			kfree(disk);
 			return NULL;
 		}
+		part_stat_set_all_uid(&disk->part0, -1);
+		part_stat_set_all_uid_whole(&disk->part0, -1);
+		part_stat_set_all_uid_mapped(&disk->part0, -1);
+
 		disk->node_id = node_id;
 		if (disk_expand_part_tbl(disk, 0)) {
 			free_part_stats(&disk->part0);
