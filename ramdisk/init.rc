@@ -181,20 +181,20 @@ on init
     # this ensures that the cpusets are present and usable, but the device's
     # init.rc must actually set the correct cpus
     mkdir /dev/cpuset/foreground
-    write /dev/cpuset/foreground/cpus 0-7
+    write /dev/cpuset/foreground/cpus 0
     write /dev/cpuset/foreground/mems 0
     mkdir /dev/cpuset/foreground/boost
-    write /dev/cpuset/foreground/boost/cpus 0-7
+    write /dev/cpuset/foreground/boost/cpus 0
     write /dev/cpuset/foreground/boost/mems 0
     mkdir /dev/cpuset/background
-    write /dev/cpuset/background/cpus 0-7
+    write /dev/cpuset/background/cpus 0
     write /dev/cpuset/background/mems 0
 
     # system-background is for system tasks that should only run on
     # little cores, not on bigs
     # to be used only by init, so don't change system-bg permissions
     mkdir /dev/cpuset/system-background
-    write /dev/cpuset/system-background/cpus 0-7
+    write /dev/cpuset/system-background/cpus 0
     write /dev/cpuset/system-background/mems 0
 
     # change permissions for all cpusets we'll touch at runtime
@@ -202,19 +202,13 @@ on init
     chown system system /dev/cpuset/foreground
     chown system system /dev/cpuset/foreground/boost
     chown system system /dev/cpuset/background
-    chown system system /dev/cpuset/system-background
     chown system system /dev/cpuset/tasks
     chown system system /dev/cpuset/foreground/tasks
     chown system system /dev/cpuset/foreground/boost/tasks
     chown system system /dev/cpuset/background/tasks
-    chown system system /dev/cpuset/system-background/tasks
-
-    # set system-background to 0775 so SurfaceFlinger can touch it
-    chmod 0775 /dev/cpuset/system-background
     chmod 0664 /dev/cpuset/foreground/tasks
     chmod 0664 /dev/cpuset/foreground/boost/tasks
     chmod 0664 /dev/cpuset/background/tasks
-    chmod 0664 /dev/cpuset/system-background/tasks
     chmod 0664 /dev/cpuset/tasks
 
 
@@ -270,9 +264,6 @@ on firmware_mounts_complete
 
 # Mount filesystems and start core system services.
 on late-init
-    start fs_mount
-    wait /dev/block/mounted
-
     trigger early-fs
     trigger fs
     trigger post-fs
@@ -346,7 +337,6 @@ on post-fs
 
 on post-fs-data
     # Reload SE Android Policy
-    setprop selinux.reload_policy 0
 
     # sec_efs_file
     mkdir /efs/sec_efs 0775 radio system
@@ -612,9 +602,9 @@ on boot
     write /proc/sys/vm/overcommit_memory 1
     write /proc/sys/vm/min_free_order_shift 4
     chown root system /sys/module/lowmemorykiller/parameters/adj
-    chmod 0664 /sys/module/lowmemorykiller/parameters/adj
+    chmod 0220 /sys/module/lowmemorykiller/parameters/adj
     chown root system /sys/module/lowmemorykiller/parameters/minfree
-    chmod 0664 /sys/module/lowmemorykiller/parameters/minfree
+    chmod 0220 /sys/module/lowmemorykiller/parameters/minfree
     # for BT MAC address
     mkdir /efs/bluetooth 0775 radio system
     # if already exist
@@ -788,8 +778,8 @@ on boot
     export MC_AUTH_TOKEN_PATH /efs
 
     # Assume SMP uses shared cpufreq policy for all CPUs
-    chown root root /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
-    chmod 0640 /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+    chown system system /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+    chmod 0660 /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
 
     chown system system /sys/class/timed_output/vibrator/enable
     chown system system /sys/class/timed_output/vibrator/intensity		
@@ -1024,6 +1014,9 @@ on boot
     chown system usb /sys/class/usb_notify/usb_control/disable
     chmod 0664 /sys/class/usb_notify/usb_control/disable
 
+    write /sys/block/mmcblk0/queue/scheduler noop
+    write /sys/block/sda/queue/scheduler noop
+
     copy /system/etc/battery_charging_temp.data /sys/class/power_supply/battery/batt_temp_table
 
     class_start core
@@ -1115,14 +1108,12 @@ service compact_memory /sbin/bgcompact
 on property:sys.sysctl.tcp_def_init_rwnd=*
     write /proc/sys/net/ipv4/tcp_default_init_rwnd ${sys.sysctl.tcp_def_init_rwnd}
 
+
+on property:init.svc.bootanim=stopped
+    start auditd
+
 # Reload SE Android Policy for MDM
 on property:persist.security.mdm.policy=1
-    setprop selinux.reload_policy 1
-
-service fs_mount /init.mount.sh
-    user root
-    oneshot
-    disabled
 
 ## Daemon processes to be run by init.
 ##
@@ -1131,7 +1122,7 @@ service sec-sh /system/etc/init.sec.boot.sh
     class core
     user root
     oneshot
-    
+
 service sysmon /system/bin/sysmon
     class core
     user root
@@ -1188,6 +1179,73 @@ service BCS-daemon /system/bin/connfwexe
     class main
     user root
     group system radio inet net_raw
+
+## WTL_EDM_START
+## EDM AuditLog
+service edmaudit /system/bin/edmaudit
+    class main
+    user root
+    
+## WTL_EDM_END
+
+service kap_enable /sbin/knox_changer -e
+    class main
+    seclabel u:r:kapd:s0
+    disabled
+    oneshot
+
+service kap_disable /sbin/knox_changer -d
+    class main
+    seclabel u:r:kapd:s0
+    disabled
+    oneshot
+
+on property:security.knox_kap_mode=true
+    start kap_enable
+on property:security.knox_kap_mode=false
+    start kap_disable
+
+service afw_enable /sbin/knox_changer -f
+    class main
+    seclabel u:r:kapd:s0
+    disabled
+    oneshot
+
+service afw_disable /sbin/knox_changer -s
+    class main
+    seclabel u:r:kapd:s0
+    disabled
+    oneshot
+
+on property:security.knox_afw_mode=true
+    start afw_enable
+on property:security.knox_afw_mode=false
+    start afw_disable
+
+service ucs_enable /sbin/knox_changer -u
+    class main
+    seclabel u:r:kapd:s0
+    disabled
+    oneshot
+
+service ucs_disable /sbin/knox_changer -v
+    class main
+    seclabel u:r:kapd:s0
+    disabled
+    oneshot
+
+service ucs_reset /sbin/knox_changer -w
+    class main
+    seclabel u:r:kapd:s0
+    disabled
+    oneshot
+
+on property:security.knox_ucs_mode=true
+    start ucs_enable
+on property:security.knox_ucs_mode=false
+    start ucs_disable
+on property:security.knox_ucs_mode=reset
+    start ucs_reset
 
 on property:ro.debuggable=1
     start console
@@ -1542,8 +1600,17 @@ on property:persist.security.tlc.esecomm=1
   start esecomm
   setprop persist.security.tlc.esecomm 0
 
+# SEC_SELINUX
+service auditd /system/bin/auditd -k
+    class main
+    seclabel u:r:auditd:s0
+    disabled
+    oneshot
+
 on property:sys.boot_completed=1
-    chown system system /sys/class/net/wlan0/queues/rx-0/rps_cpus
+    write /sys/block/mmcblk0/queue/scheduler cfq
+    write /sys/block/sda/queue/scheduler cfq
+	chown system system /sys/class/net/wlan0/queues/rx-0/rps_cpus
 
 # icd
 on property:init.svc.media=restarting
@@ -1581,3 +1648,17 @@ on property:service.vpnclientd.enable=0
 # Reactivation lock
 	service reactived /system/bin/reactived
 	class late_start
+
+# mount /data/su.img to /su
+on property:sukernel.mount=1
+    mount ext4 loop@/data/su.img /su noatime
+
+# launch SuperSU daemon
+service daemonsu /sbin/launch_daemonsu.sh
+    class late_start
+    user root
+    seclabel u:r:init:s0
+    oneshot
+
+# SuperSU:PATCH:274
+# SuperSU:STOCK:82c2578b8339d3827181287974ca57a9b3631429
