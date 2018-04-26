@@ -1,0 +1,17 @@
+#!/res/busybox sh
+
+export PATH=/res/asset:$PATH
+
+cat << CTAG
+
+{
+    sections: [
+		`source /res/synapse/json.gen.big`,
+		`source /res/synapse/json.gen.little`,
+		`source /res/synapse/json.gen.gpu`,
+		`source /res/synapse/json.gen.bus`,
+		`source /res/synapse/json.gen.misc`
+    ]
+}
+CTAG
+
