@@ -2601,6 +2601,10 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		if (written > 0) {
 			struct hd_struct *part =
 				iocb->ki_filp->f_mapping->host->i_sb->s_bdev->bd_part;
+			// Do we want to separate O_DIRECT traffic?
+			part_stat_add_uid(part,
+					__kuid_val(get_current()->cred->uid),
+					written / 0x200);
 		}
 		if (written < 0 || written == count)
 			goto out;
