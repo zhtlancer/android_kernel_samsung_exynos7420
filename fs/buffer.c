@@ -1183,6 +1183,8 @@ void mark_buffer_dirty(struct buffer_head *bh)
 			__kuid_val(get_current()->cred->uid),
 			bh->b_size / 0x200);
 #endif
+	part_stat_add_global(__kuid_val(get_current()->cred->uid),
+			bh->b_size / 0x200);
 
 	/*
 	 * Very *carefully* optimize the it-is-already-dirty case.

@@ -36,6 +36,14 @@ DEFINE_SPINLOCK(disk_stats_uid_slots_lock);
 unsigned int disk_stats_uid_slots_collided;
 int disk_stats_uid_slots_allocated;
 
+struct disk_stats_uid __percpu *dkstats_uid_global;
+unsigned long dkstats_uid_ts1;
+unsigned long dkstats_uid_ts2;
+unsigned long dkstats_uid_ts_offset;
+atomic_t dkstats_uid_seq;
+unsigned long *dkstats_uid_hist1;
+unsigned long *dkstats_uid_hist2;
+
 /* for extended dynamic devt allocation, currently only one major is used */
 #define NR_EXT_DEVT		(1 << MINORBITS)
 
@@ -942,6 +950,21 @@ static int __init genhd_device_init(void)
 	/* create top-level block dir */
 	if (!sysfs_deprecated)
 		block_depr = kobject_create_and_add("block", NULL);
+
+	/*
+	 * per-uid disk stats init
+	 */
+	WARN_ON(dkstats_uid_global != NULL);
+	dkstats_uid_global = alloc_percpu(struct disk_stats_uid);
+	dkstats_uid_ts1 = 0;
+	dkstats_uid_ts2 = 0;
+	dkstats_uid_ts_offset = 0;
+	atomic_set(&dkstats_uid_seq, 0);
+	dkstats_uid_hist1 = kzalloc(sizeof(unsigned long) * MAX_STATS_ENTRIES,
+			GFP_KERNEL);
+	dkstats_uid_hist2 = kzalloc(sizeof(unsigned long) * MAX_STATS_ENTRIES,
+			GFP_KERNEL);
+
 	return 0;
 }
 
@@ -1421,6 +1444,61 @@ static int diskstats_uid_show(struct seq_file *seqf, void *v)
 	return 0;
 }
 
+static int diskstats_uid_global_show(struct seq_file *seqf, void *v)
+{
+	int cpu;
+
+	int i;
+	struct timespec uptime;
+	unsigned long uptime_ts;
+	int new_iter = 0;
+	unsigned long total_sectors = 0;
+	const char *sanity = disk_stats_uid_slots_collided == 0 ?
+		"[sane]" : "[collided]";
+	get_monotonic_boottime(&uptime);
+	uptime_ts = uptime.tv_sec - dkstats_uid_ts_offset;
+	if ((uptime_ts - dkstats_uid_ts1) >= 1) {
+		new_iter = 1;
+		dkstats_uid_ts2 = dkstats_uid_ts1;
+		dkstats_uid_ts1 = uptime_ts;
+	}
+	if (new_iter)
+		atomic_inc(&dkstats_uid_seq);
+	seq_printf(seqf, "%u %lu %lu count %d / %d %s\n",
+			atomic_read(&dkstats_uid_seq),
+			uptime_ts,
+			uptime_ts - dkstats_uid_ts2,
+			disk_stats_uid_slots_allocated,
+			MAX_STATS_ENTRIES,
+			sanity);
+	for (i = 0; i < MAX_STATS_ENTRIES; i++) {
+		unsigned long sectors = 0;
+		int uid = disk_stats_uid_slots[i];
+		unsigned long diff;
+		if (uid == -1)
+			continue;
+		for_each_possible_cpu(cpu) {
+			struct disk_stats_uid *dkstats_uid =
+				per_cpu_ptr(dkstats_uid_global, cpu);
+			sectors += dkstats_uid->sectors[i];
+		}
+		if (!sectors)
+			continue;
+		if (new_iter)
+			dkstats_uid_hist2[i] = dkstats_uid_hist1[i];
+		dkstats_uid_hist1[i] = sectors;
+		diff = sectors - dkstats_uid_hist2[i];
+		seq_printf(seqf, "\t%d %lu %lu\n",
+				uid, sectors, diff);
+		total_sectors += sectors;
+	}
+	seq_printf(seqf, "\t-1 %lu\n",
+			total_sectors);
+
+	return 0;
+}
+
+
 static const struct seq_operations diskstats_op = {
 	.start	= disk_seqf_start,
 	.next	= disk_seqf_next,
@@ -1435,6 +1513,13 @@ static const struct seq_operations diskstats_uid_op = {
 	.show	= diskstats_uid_show
 };
 
+static const struct seq_operations diskstats_uid_global_op = {
+	.start	= disk_seqf_start,
+	.next	= disk_seqf_next,
+	.stop	= disk_seqf_stop,
+	.show	= diskstats_uid_global_show
+};
+
 static int diskstats_open(struct inode *inode, struct file *file)
 {
 	return seq_open(file, &diskstats_op);
@@ -1443,6 +1528,46 @@ static int diskstats_open(struct inode *inode, struct file *file)
 static int diskstats_uid_open(struct inode *inode, struct file *file)
 {
 	return seq_open(file, &diskstats_uid_op);
+}
+
+static int diskstats_uid_global_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, diskstats_uid_global_show, NULL);
+}
+
+static ssize_t diskstats_uid_global_write(struct file *file,
+		const char *buf, size_t count, loff_t *offp)
+{
+	struct timespec uptime;
+	int i;
+	int cpu;
+
+	printk(KERN_WARNING "%s resetting uid stats\n", __func__);
+
+	get_monotonic_boottime(&uptime);
+
+	atomic_set(&dkstats_uid_seq, 0);
+	dkstats_uid_ts_offset = uptime.tv_sec;
+	dkstats_uid_ts1 = 0;
+	dkstats_uid_ts2 = 0;
+	for (i = 0; i < MAX_STATS_ENTRIES; i++) {
+		int uid = disk_stats_uid_slots[i];
+		unsigned long sectors = 0;
+		if (uid == -1)
+			continue;
+		for_each_possible_cpu(cpu) {
+			struct disk_stats_uid *dkstats_uid =
+				per_cpu_ptr(dkstats_uid_global, cpu);
+			sectors += dkstats_uid->sectors[i];
+			dkstats_uid->sectors[i] = 0;
+		}
+		if (!sectors)
+			continue;
+		dkstats_uid_hist2[i] = 0;
+		dkstats_uid_hist1[i] = 0;
+	}
+
+	return count;
 }
 
 static const struct file_operations proc_diskstats_operations = {
@@ -1459,10 +1584,19 @@ static const struct file_operations proc_diskstats_uid_operations = {
 	.release	= seq_release,
 };
 
+static const struct file_operations proc_diskstats_uid_global_operations = {
+	.open		= diskstats_uid_global_open,
+	.read		= seq_read,
+	.write		= diskstats_uid_global_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 static int __init proc_genhd_init(void)
 {
 	proc_create("diskstats", 0, NULL, &proc_diskstats_operations);
 	proc_create("diskstats_uid", 0, NULL, &proc_diskstats_uid_operations);
+	proc_create("diskstats_uid_global", 0, NULL, &proc_diskstats_uid_global_operations);
 	proc_create("partitions", 0, NULL, &proc_partitions_operations);
 	return 0;
 }

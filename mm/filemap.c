@@ -33,6 +33,7 @@
 #include <linux/hardirq.h> /* for BUG_ON(!in_atomic()) only */
 #include <linux/memcontrol.h>
 #include <linux/cleancache.h>
+#include <linux/blk-uid-throttle.h>
 #include "internal.h"
 
 #ifdef CONFIG_SDP
@@ -2366,6 +2367,7 @@ generic_file_direct_write(struct kiocb *iocb, const struct iovec *iov,
 		}
 		*ppos = pos;
 	}
+	blk_uid_rl_throttle(mapping, written);
 out:
 	return written;
 }
@@ -2506,6 +2508,7 @@ again:
 		pos += copied;
 		written += copied;
 
+		blk_uid_rl_throttle(mapping, copied);
 		balance_dirty_pages_ratelimited(mapping);
 	} while (iov_iter_count(i));
 
@@ -2604,6 +2607,8 @@ ssize_t __generic_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 			// Do we want to separate O_DIRECT traffic?
 			part_stat_add_uid(part,
 					__kuid_val(get_current()->cred->uid),
+					written / 0x200);
+			part_stat_add_global(__kuid_val(get_current()->cred->uid),
 					written / 0x200);
 		}
 		if (written < 0 || written == count)

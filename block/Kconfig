@@ -99,6 +99,10 @@ config BLK_DEV_THROTTLING
 
 	See Documentation/cgroups/blkio-controller.txt for more information.
 
+config BLK_DEV_THROTTLING_UID
+	bool "Block layer bio throttling via UID support"
+	default n
+
 menu "Partition Types"
 
 source "block/partitions/Kconfig"
