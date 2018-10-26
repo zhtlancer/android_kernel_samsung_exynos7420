@@ -149,6 +149,20 @@ static ssize_t ratelimit_uid_write(struct file *file, const char __user *buf,
 
 	printk(KERN_WARNING "%s:%d uid %d ratelimit %d\n", __func__, __LINE__, (int)uid, rate);
 
+	if (uid < 0) {
+		struct blk_uid_rl *ptr;
+		spin_lock(&blk_uid_rl_list_lock);
+		list_for_each_entry(ptr, &blk_uid_rl_list, list) {
+			ptr->ratelimit = -1;
+			ptr->stats_quota = 0;
+			ptr->timestamp = 0;
+			ptr->stats_hz = 0;
+			ptr->last_written = 0;
+		}
+		spin_unlock(&blk_uid_rl_list_lock);
+		return count;
+	}
+
 	spin_lock(&disk_stats_uid_slots_lock);
 	rl_slot_index = alloc_stats_index(uid);
 	spin_unlock(&disk_stats_uid_slots_lock);
