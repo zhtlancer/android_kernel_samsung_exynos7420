@@ -149,8 +149,9 @@ static ssize_t ratelimit_uid_write(struct file *file, const char __user *buf,
 
 	printk(KERN_WARNING "%s:%d uid %d ratelimit %d\n", __func__, __LINE__, (int)uid, rate);
 
-	if (uid < 0) {
+	if ((int)uid < 0) {
 		struct blk_uid_rl *ptr;
+		printk(KERN_WARNING "%s:%d resetting all ratelimit settings\n", __func__, __LINE__);
 		spin_lock(&blk_uid_rl_list_lock);
 		list_for_each_entry(ptr, &blk_uid_rl_list, list) {
 			ptr->ratelimit = -1;
